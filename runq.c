@@ -143,14 +143,15 @@ void dequantize(QuantizedTensor *qx, float* x, int n) {
 }
 
 void quantize(QuantizedTensor *qx, float* x, int n) {
-    int num_groups = n / GS;
+    int num_groups = (n + GS - 1) / GS;     // same as ceil(n / GS) but just int math
     float Q_MAX = 127.0f;
 
     for (int group = 0; group < num_groups; group++) {
 
         // find the max absolute value in the current group
         float wmax = 0.0;
-        for (int i = 0; i < GS; i++) {
+        int gs = (( group == num_groups - 1) && (n % GS)) ? (n % GS) : GS;
+        for (int i = 0; i < gs; i++) {
             float val = fabs(x[group * GS + i]);
             if (val > wmax) {
                 wmax = val;
@@ -162,7 +163,7 @@ void quantize(QuantizedTensor *qx, float* x, int n) {
         qx->s[group] = scale;
 
         // calculate and write the quantized values
-        for (int i = 0; i < GS; i++) {
+        for (int i = 0; i < gs; i++) {
             float quant_value = x[group * GS + i] / scale; // scale
             int8_t quantized = (int8_t) round(quant_value); // round and clamp
             qx->q[group * GS + i] = quantized;
@@ -327,14 +328,20 @@ void matmul(float* xout, QuantizedTensor *x, QuantizedTensor *w, int n, int d) {
         int32_t ival = 0;
         int in = i * n;
 
-        // do the matmul in groups of GS
-        int j;
-        for (j = 0; j <= n - GS; j += GS) {
-            for (int k = 0; k < GS; k++) {
+        // do the matmul in chunks of length cs
+        int j = 0;
+        while (j < n){
+            int cs = (GS < n - j) ? GS : n - j;
+            // ensure each chunk only has 1 scale factor
+            cs = ((in + j) % GS) ? (in + j) % GS : cs;
+            cs = (j % GS) ? j % GS : cs;
+
+            for (int k = 0; k < cs; k++) {
                 ival += ((int32_t) x->q[j + k]) * ((int32_t) w->q[in + j + k]);
             }
             val += ((float) ival) * w->s[(in + j) / GS] * x->s[j / GS];
             ival = 0;
+            j += cs;
         }
 
         xout[i] = val;
