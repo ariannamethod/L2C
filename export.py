@@ -190,9 +190,10 @@ def version2_export(model, filepath, group_size=64):
     version = 2
 
     # let's first do some validation for this export type
-    while model.params.dim % group_size != 0:
+    hidden_dim = model.layers[0].feed_forward.w1.weight.shape[0]
+    while model.params.dim % group_size != 0 or hidden_dim % group_size != 0:
         group_size //= 2
-        print(f"BACKOFF: reducing group size to {group_size} to fit hidden_dim")
+        print(f"BACKOFF: reducing group size to {group_size} to fit dim and hidden_dim")
     weights = [
         model.tok_embeddings.weight,
         *[layer.attention.wq.weight for layer in model.layers],
@@ -218,7 +219,6 @@ def version2_export(model, filepath, group_size=64):
     out_file.write(struct.pack('i', version))
     # 3) write the params, which will be 7 ints
     p = model.params
-    hidden_dim = model.layers[0].feed_forward.w1.weight.shape[0]
     n_kv_heads = p.n_heads if p.n_kv_heads is None else p.n_kv_heads
     header = struct.pack('iiiiiii', p.dim, hidden_dim, p.n_layers, p.n_heads,
                                     n_kv_heads, p.vocab_size, p.max_seq_len)
