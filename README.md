@@ -400,6 +400,9 @@ If your candidate PRs have elements of these it doesn't mean they won't get merg
 - [llama2.c-zh - Bilingual Chinese and English](https://github.com/chenyangMl/llama2.c-zh) by @[chenyangMl](https://github.com/chenyangMl): Expand tokenizer to support training and inference in both Chinese and English
 - Haskell
   - [llama2.hs](https://github.com/chris-ch/llama2.hs) by @[chris-ch](https://github.com/chris-ch): an Haskell port of this project
+- Nim
+  - [llama2.nim](https://github.com/treeform/llama2.nim) by @[treeform](https://github.com/treeform): a Nim port of this project
+  - [llama2nim](https://github.com/Vindaar/llama2nim) by @[Vindaar](https://github.com/Vindaar): another Nim port of this project
 
 ## unsorted todos
 
