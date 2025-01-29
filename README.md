@@ -1,3 +1,9 @@
+## What did I do and going to do? 
+
+I forked this repo to add support of offloading computation to Xeon Phi x100 cards, for instance I created some Visual Studio project files to make it compatible with VS2015, and code modifications are needed to be done. 
+
+Resbi 2025-01-29 UTC+8
+
 ## llama2.c
 
 <p align="center">
