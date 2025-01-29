@@ -1,0 +1,62 @@
+﻿Build started 29/01/2025 19:47:05.
+     1>Project "C:\Users\Administrator\Desktop\Phi x100\Programming\llama2.knc.c\llama2.knc.c.runq\llama2.knc.c.runq.vcxproj" on node 3 (Build target(s)).
+     1>ClCompile:
+         C:\Program Files (x86)\IntelSWTools\compilers_and_libraries_2017\windows\bin\Intel64\icl.exe /c /Qm64 /I"C:\Program Files (x86)\IntelSWTools\compilers_and_libraries_2017.8.275\windows\mkl\include" /ZI /nologo /W3 /Od /D __INTEL_COMPILER=1700 /D _WINHOST /D SINGLE_PREC /D _MBCS /D _MBCS /EHsc /RTC1 /MD /GS /Qoffload-option,mic,compiler,"\"-IC:\Program Files (x86)\IntelSWTools\compilers_and_libraries_2017.8.275\windows\mkl\include\"" /Zc:wchar_t /Zc:forScope /Qopenmp /Fo"x64\Debug\llama2.knc.c.runq\\" /Fd"x64\Debug\llama2.knc.c.runq\vc140.pdb" /TC ..\runq.c ..\win.c
+         runq.c
+     1>..\runq.c(99): warning #2722: list initialization syntax is a C++11 feature
+               s->xq = (QuantizedTensor) { .q = calloc(p->dim, sizeof(int8_t)), .s = calloc(p->dim, sizeof(float)) };
+                        ^
+         
+     1>..\runq.c(100): warning #2722: list initialization syntax is a C++11 feature
+               s->hq = (QuantizedTensor) { .q = calloc(p->hidden_dim, sizeof(int8_t)), .s = calloc(p->hidden_dim, sizeof(float)) };
+                        ^
+         
+     1>..\runq.c(221): warning #1786: function "fopen" (declared at line 205 of "C:\Program Files (x86)\Windows Kits\10\Include\10.0.10150.0\ucrt\stdio.h") was declared deprecated ("This function or variable may be unsafe. Consider using fopen_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.")
+               FILE *file = fopen(checkpoint, "rb");
+                            ^
+         
+     1>..\runq.c(245): warning #266: function "open" declared implicitly
+               *fd = open(checkpoint, O_RDONLY); // open in read only mode
+                     ^
+         
+     1>..\runq.c(274): warning #266: function "close" declared implicitly
+               if (t->fd != -1) { close(t->fd); }
+                                  ^
+         
+     1>..\runq.c(516): warning #1786: function "fopen" (declared at line 205 of "C:\Program Files (x86)\Windows Kits\10\Include\10.0.10150.0\ucrt\stdio.h") was declared deprecated ("This function or variable may be unsafe. Consider using fopen_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.")
+               FILE *file = fopen(tokenizer_path, "rb");
+                            ^
+         
+     1>..\runq.c(544): warning #1786: function "sscanf" (declared at line 2254 of "C:\Program Files (x86)\Windows Kits\10\Include\10.0.10150.0\ucrt\stdio.h") was declared deprecated ("This function or variable may be unsafe. Consider using sscanf_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.")
+               if (sscanf(piece, "<0x%02hhX>", &byte_val) == 1) {
+                   ^
+         
+     1>..\runq.c(663): warning #1786: function "sprintf" (declared at line 1769 of "C:\Program Files (x86)\Windows Kits\10\Include\10.0.10150.0\ucrt\stdio.h") was declared deprecated ("This function or variable may be unsafe. Consider using sprintf_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.")
+                       sprintf(str_buffer, "%s%s", t->vocab[tokens[i]], t->vocab[tokens[i+1]]);
+                       ^
+         
+     1>..\runq.c(951): warning #1786: function "strcpy" (declared at line 119 of "C:\Program Files (x86)\Windows Kits\10\Include\10.0.10150.0\ucrt\string.h") was declared deprecated ("This function or variable may be unsafe. Consider using strcpy_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.")
+                               strcpy(system_prompt, cli_system_prompt);
+                               ^
+         
+     1>..\runq.c(957): warning #1786: function "strcpy" (declared at line 119 of "C:\Program Files (x86)\Windows Kits\10\Include\10.0.10150.0\ucrt\string.h") was declared deprecated ("This function or variable may be unsafe. Consider using strcpy_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.")
+                           strcpy(user_prompt, cli_user_prompt);
+                           ^
+         
+     1>..\runq.c(965): warning #1786: function "sprintf" (declared at line 1769 of "C:\Program Files (x86)\Windows Kits\10\Include\10.0.10150.0\ucrt\stdio.h") was declared deprecated ("This function or variable may be unsafe. Consider using sprintf_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.")
+                           sprintf(rendered_prompt, system_template, system_prompt, user_prompt);
+                           ^
+         
+     1>..\runq.c(968): warning #1786: function "sprintf" (declared at line 1769 of "C:\Program Files (x86)\Windows Kits\10\Include\10.0.10150.0\ucrt\stdio.h") was declared deprecated ("This function or variable may be unsafe. Consider using sprintf_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.")
+                           sprintf(rendered_prompt, user_template, user_prompt);
+                           ^
+         
+         win.c
+       Link:
+         C:\Program Files (x86)\IntelSWTools\compilers_and_libraries_2017\windows\bin\Intel64\xilink.exe -qm64 /OUT:"C:\Users\Administrator\Desktop\Phi x100\Programming\llama2.knc.c\build\x64\Debug\x86_64\llama2.knc.c.runq.exe" /INCREMENTAL /NOLOGO /LIBPATH:"C:\Program Files (x86)\IntelSWTools\compilers_and_libraries_2017.8.275\windows\mkl\lib\intel64" mkl_intel_lp64.lib mkl_intel_thread.lib mkl_core.lib kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib /MANIFEST /manifest:embed /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /DEBUG /PDB:"C:\Users\Administrator\Desktop\Phi x100\Programming\llama2.knc.c\build\x64\Debug\x86_64\llama2.knc.c.runq.pdb" /qoffload-ldopts="\"C:\Program Files (x86)\IntelSWTools\compilers_and_libraries_2017.8.275\windows\mkl\lib\mic\libmkl_intel_lp64.a\" \"C:\Program Files (x86)\IntelSWTools\compilers_and_libraries_2017.8.275\windows\mkl\lib\mic\libmkl_intel_thread.a\" \"C:\Program Files (x86)\IntelSWTools\compilers_and_libraries_2017.8.275\windows\mkl\lib\mic\libmkl_core.a\" -lpthread" /TLBID:1 /DYNAMICBASE /NXCOMPAT /IMPLIB:"C:\Users\Administrator\Desktop\Phi x100\Programming\llama2.knc.c\build\x64\Debug\x86_64\llama2.knc.c.runq.lib" /MACHINE:X64 x64\Debug\llama2.knc.c.runq\runq.obj
+         x64\Debug\llama2.knc.c.runq\win.obj
+     1>Done Building Project "C:\Users\Administrator\Desktop\Phi x100\Programming\llama2.knc.c\llama2.knc.c.runq\llama2.knc.c.runq.vcxproj" (Build target(s)).
+
+Build succeeded.
+
+Time Elapsed 00:00:02.01
