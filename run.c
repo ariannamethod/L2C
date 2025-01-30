@@ -285,26 +285,29 @@ void qkv_matmul_mic(RunState* s, TransformerWeights* w, int l, int dim, int kv_d
     float *wv = w->wv;
     float *wv_t = wv + l*dim*kv_dim;
 
-    //printf("Offloading Q matmul to MIC\n");
     #pragma offload target(mic) \
         in(xb:length(dim)) \
+        in(wq_t:length(dim*dim)) \
+        in(wk_t:length(dim*kv_dim)) \
+        in(wv_t:length(dim*kv_dim)) \
         out(q:length(dim)) \
-        in(wq_t:length(dim*dim))
-    matmul(q, xb, wq_t, dim, dim);
-
-    //printf("Offloading K matmul to MIC\n");
-    #pragma offload target(mic) \
-        in(xb:length(dim)) \
         out(k:length(kv_dim)) \
-        in(wk_t:length(dim*kv_dim))
-    matmul(k, xb, wk_t, dim, kv_dim);
+        out(v:length(kv_dim))
+    {
+        matmul(q, xb, wq_t, dim, dim);
+        matmul(k, xb, wk_t, dim, kv_dim);
+        matmul(v, xb, wv_t, dim, kv_dim);
+    }
+}
 
-    //printf("Offloading V matmul to MIC\n");
+void matmul_mic(float* xout, float* x, float* w, int n, int d) {
     #pragma offload target(mic) \
-        in(xb:length(dim)) \
-        out(v:length(kv_dim)) \
-        in(wv_t:length(dim*kv_dim))
-    matmul(v, xb, wv_t, dim, kv_dim);
+        in(x:length(n)) \
+        in(w:length(d*n)) \
+        out(xout:length(d))
+    {
+        matmul(xout, x, w, n, d);
+    }
 }
 
 float* forward(Transformer* transformer, int token, int pos) {
@@ -319,6 +322,12 @@ float* forward(Transformer* transformer, int token, int pos) {
     int kv_mul = p->n_heads / p->n_kv_heads; // integer multiplier of the kv sharing in multiquery
     int hidden_dim =  p->hidden_dim;
     int head_size = dim / p->n_heads;
+
+    float *xout_temp;
+    float *x_temp;
+    float *w_temp;
+    int n_temp;
+    int d_temp;
 
     // copy the token embedding into x
     float* content_row = w->token_embedding_table + token * dim;
@@ -336,6 +345,7 @@ float* forward(Transformer* transformer, int token, int pos) {
         s->v = s->value_cache + loff + pos * kv_dim;
 
         // qkv matmuls for this position
+        // printf("Offloading QKV matmuls to MIC\n");
         #ifdef OFFLOAD
             //printf("Offloading QKV matmuls to MIC\n");
             qkv_matmul_mic(s, w, l, dim, kv_dim);
@@ -403,6 +413,19 @@ float* forward(Transformer* transformer, int token, int pos) {
         }
 
         // final matmul to get the output of the attention
+        /*
+        printf("Offloading final matmul to MIC\n");
+        #ifdef OFFLOAD
+            xout_temp = s->xb2; 
+            x_temp = s->xb;
+            w_temp = w->wo + l*dim*dim;
+            n_temp = dim;
+            d_temp = dim;
+            matmul_mic(xout_temp, x_temp, w_temp, n_temp, d_temp);
+        #else
+            matmul(s->xb2, s->xb, w->wo + l*dim*dim, dim, dim);
+        #endif
+        */
         matmul(s->xb2, s->xb, w->wo + l*dim*dim, dim, dim);
 
         // residual connection back into x
@@ -415,9 +438,29 @@ float* forward(Transformer* transformer, int token, int pos) {
 
         // Now for FFN in PyTorch we have: self.w2(F.silu(self.w1(x)) * self.w3(x))
         // first calculate self.w1(x) and self.w3(x)
+        /*
+        printf("Offloading FFN matmuls to MIC\n");
+        #ifdef OFFLOAD
+            xout_temp = s->hb;
+            x_temp = s->xb;
+            w_temp = w->w1 + l*dim*hidden_dim;  
+            n_temp = dim;
+            d_temp = hidden_dim;
+            matmul_mic(xout_temp, x_temp, w_temp, n_temp, d_temp);
+            xout_temp = s->hb2;
+            x_temp = s->xb;
+            w_temp = w->w3 + l*dim*hidden_dim;
+            n_temp = dim;
+            d_temp = hidden_dim;
+            matmul_mic(xout_temp, x_temp, w_temp, n_temp, d_temp);
+        #else
+            matmul(s->hb, s->xb, w->w1 + l*dim*hidden_dim, dim, hidden_dim);
+            matmul(s->hb2, s->xb, w->w3 + l*dim*hidden_dim, dim, hidden_dim);
+        #endif
+        */
         matmul(s->hb, s->xb, w->w1 + l*dim*hidden_dim, dim, hidden_dim);
         matmul(s->hb2, s->xb, w->w3 + l*dim*hidden_dim, dim, hidden_dim);
-
+    
         // SwiGLU non-linearity
         for (int i = 0; i < hidden_dim; i++) {
             float val = s->hb[i];
@@ -429,6 +472,19 @@ float* forward(Transformer* transformer, int token, int pos) {
         }
 
         // final matmul to get the output of the ffn
+        /*
+        printf("Offloading final FFN matmul to MIC\n");
+        #ifdef OFFLOAD
+            xout_temp = s->xb;
+            x_temp = s->hb;
+            w_temp = w->w2 + l*dim*hidden_dim;
+            n_temp = hidden_dim;
+            d_temp = dim;
+            matmul_mic(xout_temp, x_temp, w_temp, n_temp, d_temp);
+        #else
+            matmul(s->xb, s->hb, w->w2 + l*dim*hidden_dim, hidden_dim, dim);
+        #endif
+        */
         matmul(s->xb, s->hb, w->w2 + l*dim*hidden_dim, hidden_dim, dim);
 
         // residual connection
@@ -441,6 +497,19 @@ float* forward(Transformer* transformer, int token, int pos) {
     rmsnorm(x, x, w->rms_final_weight, dim);
 
     // classifier into logits
+    /*
+    printf("Offloading classifier matmul to MIC\n");
+    #ifdef OFFLOAD
+        xout_temp = s->logits;
+        x_temp = x;
+        w_temp = w->wcls;
+        n_temp = p->dim;
+        d_temp = p->vocab_size;
+        matmul_mic(xout_temp, x_temp, w_temp, n_temp, d_temp);
+    #else
+        matmul(s->logits, x, w->wcls, p->dim, p->vocab_size);
+    #endif
+    */
     matmul(s->logits, x, w->wcls, p->dim, p->vocab_size);
     return s->logits;
 }
