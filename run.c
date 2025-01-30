@@ -13,6 +13,13 @@
     #include <unistd.h>
     #include <sys/mman.h>
 #endif
+
+#include <offload.h>
+#include <omp.h>
+#include <time.h>
+
+#define OFFLOAD 1
+
 // ----------------------------------------------------------------------------
 // Transformer model
 
@@ -75,16 +82,14 @@ typedef struct {
 } Transformer;
 
 void malloc_run_state(RunState* s, Config* p) {
-    // we calloc instead of malloc to keep valgrind happy
-    int kv_dim = (p->dim * p->n_kv_heads) / p->n_heads;
     s->x = calloc(p->dim, sizeof(float));
     s->xb = calloc(p->dim, sizeof(float));
     s->xb2 = calloc(p->dim, sizeof(float));
     s->hb = calloc(p->hidden_dim, sizeof(float));
     s->hb2 = calloc(p->hidden_dim, sizeof(float));
     s->q = calloc(p->dim, sizeof(float));
-    s->key_cache = calloc(p->n_layers * p->seq_len * kv_dim, sizeof(float));
-    s->value_cache = calloc(p->n_layers * p->seq_len * kv_dim, sizeof(float));
+    s->key_cache = calloc(p->n_layers * p->seq_len * (p->dim * p->n_kv_heads) / p->n_heads, sizeof(float));
+    s->value_cache = calloc(p->n_layers * p->seq_len * (p->dim * p->n_kv_heads) / p->n_heads, sizeof(float));
     s->att = calloc(p->n_heads * p->seq_len, sizeof(float));
     s->logits = calloc(p->vocab_size, sizeof(float));
     // ensure all mallocs went fine
@@ -180,15 +185,18 @@ void free_transformer(Transformer* t) {
 // neural net blocks; the dynamics of the Transformer
 
 void rmsnorm(float* o, float* x, float* weight, int size) {
-    // calculate sum of squares
     float ss = 0.0f;
+    // Calculate sum of squares with vectorization
+    #pragma omp parallel for simd reduction(+:ss)
     for (int j = 0; j < size; j++) {
         ss += x[j] * x[j];
     }
     ss /= size;
     ss += 1e-5f;
     ss = 1.0f / sqrtf(ss);
-    // normalize and scale
+    
+    // Normalize and scale with vectorization
+    #pragma omp parallel for simd
     for (int j = 0; j < size; j++) {
         o[j] = weight[j] * (ss * x[j]);
     }
@@ -204,28 +212,99 @@ void softmax(float* x, int size) {
     }
     // exp and sum
     float sum = 0.0f;
+    #pragma omp parallel for reduction(+:sum)
     for (int i = 0; i < size; i++) {
         x[i] = expf(x[i] - max_val);
         sum += x[i];
     }
     // normalize
+    #pragma omp parallel for
     for (int i = 0; i < size; i++) {
         x[i] /= sum;
     }
 }
 
+#ifndef OFFLOAD
 void matmul(float* xout, float* x, float* w, int n, int d) {
     // W (d,n) @ x (n,) -> xout (d,)
-    // by far the most amount of time is spent inside this little function
-    int i;
-    #pragma omp parallel for private(i)
-    for (i = 0; i < d; i++) {
-        float val = 0.0f;
-        for (int j = 0; j < n; j++) {
-            val += w[i * n + j] * x[j];
+    const int block_size = 128;  // Output blocking for L1 cache
+    
+    #pragma omp parallel for 
+    for (int i = 0; i < d; i += block_size) {
+        const int imax = (i + block_size < d) ? i + block_size : d;
+        
+        #pragma vector aligned
+        #pragma simd
+        for (int ib = i; ib < imax; ib++) {
+            float val = 0.0f;
+            #pragma vector aligned
+            #pragma simd reduction(+:val)
+            for (int j = 0; j < n; j++) {
+                val += w[ib * n + j] * x[j];
+            }
+            xout[ib] = val;
         }
-        xout[i] = val;
     }
+}
+#else
+TARGET_ATTRIBUTE // MIC attribute
+void matmul(float* xout, float* x, float* w, int n, int d) {
+    // W (d,n) @ x (n,) -> xout (d,)
+    const int block_size = 128;  // Output blocking for L1 cache
+    
+    #pragma omp parallel for 
+    for (int i = 0; i < d; i += block_size) {
+        const int imax = (i + block_size < d) ? i + block_size : d;
+        
+        #pragma vector aligned
+        #pragma simd
+        for (int ib = i; ib < imax; ib++) {
+            float val = 0.0f;
+            #pragma vector aligned
+            #pragma simd reduction(+:val)
+            for (int j = 0; j < n; j++) {
+                val += w[ib * n + j] * x[j];
+            }
+            xout[ib] = val;
+        }
+    }
+    #pragma omp barrier
+}
+#endif
+
+// Function to offload the QKV matmuls to MIC
+void qkv_matmul_mic(RunState* s, TransformerWeights* w, int l, int dim, int kv_dim) {
+	float *q = s->q;
+	float *k = s->k; 
+	float *v = s->v;
+    float *xb = s->xb;
+    float *wq = w->wq;
+    float *wq_t = wq + l*dim*dim;
+    float *wk = w->wk;
+    float *wk_t = wk + l*dim*kv_dim;
+    float *wv = w->wv;
+    float *wv_t = wv + l*dim*kv_dim;
+
+    //printf("Offloading Q matmul to MIC\n");
+    #pragma offload target(mic) \
+        in(xb:length(dim)) \
+        out(q:length(dim)) \
+        in(wq_t:length(dim*dim))
+    matmul(q, xb, wq_t, dim, dim);
+
+    //printf("Offloading K matmul to MIC\n");
+    #pragma offload target(mic) \
+        in(xb:length(dim)) \
+        out(k:length(kv_dim)) \
+        in(wk_t:length(dim*kv_dim))
+    matmul(k, xb, wk_t, dim, kv_dim);
+
+    //printf("Offloading V matmul to MIC\n");
+    #pragma offload target(mic) \
+        in(xb:length(dim)) \
+        out(v:length(kv_dim)) \
+        in(wv_t:length(dim*kv_dim))
+    matmul(v, xb, wv_t, dim, kv_dim);
 }
 
 float* forward(Transformer* transformer, int token, int pos) {
@@ -257,9 +336,14 @@ float* forward(Transformer* transformer, int token, int pos) {
         s->v = s->value_cache + loff + pos * kv_dim;
 
         // qkv matmuls for this position
-        matmul(s->q, s->xb, w->wq + l*dim*dim, dim, dim);
-        matmul(s->k, s->xb, w->wk + l*dim*kv_dim, dim, kv_dim);
-        matmul(s->v, s->xb, w->wv + l*dim*kv_dim, dim, kv_dim);
+        #ifdef OFFLOAD
+            //printf("Offloading QKV matmuls to MIC\n");
+            qkv_matmul_mic(s, w, l, dim, kv_dim);
+        #else
+            matmul(s->q, s->xb, w->wq + l*dim*dim, dim, dim);
+            matmul(s->k, s->xb, w->wk + l*dim*kv_dim, dim, kv_dim);
+            matmul(s->v, s->xb, w->wv + l*dim*kv_dim, dim, kv_dim);
+        #endif
 
         // RoPE relative positional encoding: complex-valued rotate q and k in each head
         for (int i = 0; i < dim; i+=2) {
