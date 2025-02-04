@@ -448,15 +448,27 @@ def load_hf_model(model_path):
     hf_dict = hf_model.state_dict()
 
     # convert LlamaConfig to ModelArgs
-    config = ModelArgs()
-    config.dim = hf_model.config.hidden_size
-    config.n_layers = hf_model.config.num_hidden_layers
-    config.n_heads = hf_model.config.num_attention_heads
-    config.n_kv_heads = hf_model.config.num_attention_heads
-    config.vocab_size = hf_model.config.vocab_size
-    config.hidden_dim = hf_model.config.intermediate_size
-    config.norm_eps = hf_model.config.rms_norm_eps
-    config.max_seq_len = hf_model.config.max_position_embeddings
+    config = ModelArgs()     
+    if any(['config.json' in path for path in os.listdir(model_path)]):
+        with open(os.path.join(model_path, 'config.json'), 'r') as f:
+            config_json = json.load(f)
+        config.dim = config_json["hidden_size"]
+        config.n_layers = config_json["num_hidden_layers"]
+        config.n_heads = config_json["num_attention_heads"]
+        config.n_kv_heads = config_json["num_key_value_heads"]
+        config.vocab_size = config_json["vocab_size"]
+        config.hidden_dim = config_json["intermediate_size"]
+        config.norm_eps = config_json["rms_norm_eps"]
+        config.max_seq_len = config_json["max_position_embeddings"]
+    else:
+        config.dim = hf_model.config.hidden_size
+        config.n_layers = hf_model.config.num_hidden_layers
+        config.n_heads = hf_model.config.num_attention_heads
+        config.n_kv_heads = hf_model.config.num_attention_heads
+        config.vocab_size = hf_model.config.vocab_size
+        config.hidden_dim = hf_model.config.intermediate_size
+        config.norm_eps = hf_model.config.rms_norm_eps
+        config.max_seq_len = hf_model.config.max_position_embeddings
 
     # create a new Transformer object and set weights
     model = Transformer(config)
@@ -472,7 +484,7 @@ def load_hf_model(model_path):
         i = layer.layer_id
         layer.attention_norm.weight = nn.Parameter(hf_dict[f'model.layers.{i}.input_layernorm.weight'])
         layer.attention.wq.weight = nn.Parameter(permute_reverse(hf_dict[f'model.layers.{i}.self_attn.q_proj.weight']))
-        layer.attention.wk.weight = nn.Parameter(permute_reverse(hf_dict[f'model.layers.{i}.self_attn.k_proj.weight']))
+        layer.attention.wk.weight = nn.Parameter(permute_reverse(hf_dict[f'model.layers.{i}.self_attn.k_proj.weight'],n_heads=config.n_kv_heads, dim1=config.dim//config.n_heads*config.n_kv_heads))
         layer.attention.wv.weight = nn.Parameter(hf_dict[f'model.layers.{i}.self_attn.v_proj.weight'])
         layer.attention.wo.weight = nn.Parameter(hf_dict[f'model.layers.{i}.self_attn.o_proj.weight'])
         layer.ffn_norm.weight = nn.Parameter(hf_dict[f'model.layers.{i}.post_attention_layernorm.weight'])
