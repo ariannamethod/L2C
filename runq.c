@@ -220,35 +220,28 @@ void memory_map_weights(TransformerWeights *w, Config* p, void* ptr, uint8_t sha
 
 void read_checkpoint(char* checkpoint, Config* config, TransformerWeights* weights,
                      int* fd, uint8_t** data, ssize_t* file_size) {
-    FILE *file = fopen(checkpoint, "rb");
-    if (!file) { fprintf(stderr, "Couldn't open file %s\n", checkpoint); exit(EXIT_FAILURE); }
-    // read in magic number (uint32), has to be 0x616b3432, i.e. "ak42" in ASCII
-    uint32_t magic_number;
-    if (fread(&magic_number, sizeof(uint32_t), 1, file) != 1) { exit(EXIT_FAILURE); }
-    if (magic_number != 0x616b3432) { fprintf(stderr, "Bad magic number\n"); exit(EXIT_FAILURE); }
-    // read in the version number (uint32), has to be 2
-    int version;
-    if (fread(&version, sizeof(int), 1, file) != 1) { exit(EXIT_FAILURE); }
-    if (version != 2) { fprintf(stderr, "Bad version %d, need version 2\n", version); exit(EXIT_FAILURE); }
-    int header_size = 256; // the header size for version 2 in bytes
-    // read in the Config
-    if (fread(config, sizeof(Config), 1, file) != 1) { exit(EXIT_FAILURE); }
-    // read in flags
-    uint8_t shared_classifier; // a byte to indicate if the classifier is shared
-    if (fread(&shared_classifier, sizeof(uint8_t), 1, file) != 1) { exit(EXIT_FAILURE); }
-    int group_size; // the group size used in quantization
-    if (fread(&group_size, sizeof(int), 1, file) != 1) { exit(EXIT_FAILURE); }
-    GS = group_size; // set as global, as it will be used in many places
-    // figure out the file size
-    fseek(file, 0, SEEK_END); // move file pointer to end of file
-    *file_size = ftell(file); // get the file size, in bytes
-    fclose(file);
-    // memory map the Transformer weights into the data pointer
-    *fd = open(checkpoint, O_RDONLY); // open in read only mode
-    if (*fd == -1) { fprintf(stderr, "open failed!\n"); exit(EXIT_FAILURE); }
+    *fd = open(checkpoint, O_RDONLY);
+    if (*fd == -1) { fprintf(stderr, "Couldn't open file %s\n", checkpoint); exit(EXIT_FAILURE); }
+    *file_size = lseek(*fd, 0, SEEK_END); // get the file size, in bytes
+    // memory map the Config and Transformer weights into the data pointer
     *data = mmap(NULL, *file_size, PROT_READ, MAP_PRIVATE, *fd, 0);
     if (*data == MAP_FAILED) { fprintf(stderr, "mmap failed!\n"); exit(EXIT_FAILURE); }
-    void* weights_ptr = ((char*)*data) + header_size; // skip header bytes. char is 1 byte
+    uint8_t* cur = *data;
+    uint32_t magic_number = *(uint32_t*)cur;
+    cur += sizeof(uint32_t);
+    if (magic_number != 0x616b3432) { fprintf(stderr, "Bad magic number\n"); exit(EXIT_FAILURE); }
+    uint32_t version = *(uint32_t*)cur;
+    cur += sizeof(uint32_t);
+    if (version != 2) { fprintf(stderr, "Bad version %d, need version 2\n", version); exit(EXIT_FAILURE); }
+    memcpy(config, cur, sizeof(Config));
+    cur += sizeof(Config);
+    uint8_t shared_classifier = *(uint8_t*)cur; // a byte to indicate if the classifier is shared
+    cur += sizeof(uint8_t);
+    uint32_t group_size = *(uint32_t*)cur; // the group size used in quantization
+    cur += sizeof(uint32_t);
+    GS = group_size; // set as global, as it will be used in many places
+    int header_size = 256; // the header size for version 2 in bytes
+    void* weights_ptr = (void*)(*data + header_size); // skip header bytes
     memory_map_weights(weights, config, weights_ptr, shared_classifier);
 }
 
