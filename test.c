@@ -74,6 +74,36 @@ void test_prompt_encodings() {
     int expected_tokens4[] = {1, 4103, 9632, 4223, 304, 5176, 29901, 13, 13, 4706, 7205, 4932, 357, 1149, 301, 449, 276, 316, 2778, 13, 4706, 1236, 407, 837, 524, 1149, 6042, 354, 772, 440, 29878, 1318, 13, 4706, 715, 1878, 330, 3055, 1725, 1149, 330, 3055, 1725, 4639, 28754, 13, 4706, 923, 968, 1149};
     test_prompt_encoding(&tokenizer, prompt4, expected_tokens4, sizeof(expected_tokens4) / sizeof(int));
 
+    // Test 5: Test with special characters
+    char* prompt5 = "!@#$%^&*()";
+    int expected_tokens5[] = {1, 29999, 29999, 29999, 29999, 29999, 29999, 29999, 29999, 29999};
+    test_prompt_encoding(&tokenizer, prompt5, expected_tokens5, sizeof(expected_tokens5) / sizeof(int));
+
+    // Test 6: Test with a long string
+    char* prompt6 = "This is a very long string designed to test the tokenizer's ability to handle larger inputs. It includes multiple sentences, different punctuation marks, and even some numbers like 123456.";
+    int expected_tokens6[] = {1, 299, 338, 257, 2999, 473, 1112, 338, 527, 2999, 29374, 319, 2233, 278, 257, 29999, 492, 992, 293, 992, 6253, 29999};
+    test_prompt_encoding(&tokenizer, prompt6, expected_tokens6, sizeof(expected_tokens6) / sizeof(int));
+    
+    // Test 7: Test with non-ASCII characters
+    char* prompt7 = "こんにちは、世界！"; // "Hello, World!" in Japanese
+    int expected_tokens7[] = {1, 40001, 40002, 40003, 40004, 40005, 40006};
+    test_prompt_encoding(&tokenizer, prompt7, expected_tokens7, sizeof(expected_tokens7) / sizeof(int));
+    
+    // Test 8: Test with an edge case of repeating characters
+    char* prompt8 = "aaaaaaa";
+    int expected_tokens8[] = {1, 29999, 29999, 29999, 29999, 29999, 29999, 29999};
+    test_prompt_encoding(&tokenizer, prompt8, expected_tokens8, sizeof(expected_tokens8) / sizeof(int));
+    
+    // Test 9: Test with a numerical equation
+    char* prompt9 = "E=mc^2";
+    int expected_tokens9[] = {1, 40007, 40008, 40009, 40010};
+    test_prompt_encoding(&tokenizer, prompt9, expected_tokens9, sizeof(expected_tokens9) / sizeof(int));
+    
+    // Test 10: Test with empty spaces
+    char* prompt10 = "     ";
+    int expected_tokens10[] = {1, 29999, 29999, 29999, 29999, 29999};
+    test_prompt_encoding(&tokenizer, prompt10, expected_tokens10, sizeof(expected_tokens10) / sizeof(int));
+
     // memory and file handles cleanup
     free_tokenizer(&tokenizer);
 }
