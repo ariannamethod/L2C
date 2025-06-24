@@ -400,6 +400,8 @@ If your candidate PRs have elements of these it doesn't mean they won't get merg
 - [llama2.c-zh - Bilingual Chinese and English](https://github.com/chenyangMl/llama2.c-zh) by @[chenyangMl](https://github.com/chenyangMl): Expand tokenizer to support training and inference in both Chinese and English
 - Haskell
   - [llama2.hs](https://github.com/chris-ch/llama2.hs) by @[chris-ch](https://github.com/chris-ch): an Haskell port of this project
+- Swift
+  - [llama2.swift](https://github.com/ronaldmannak/llama2) by [@ronaldmannak](https://github.com/ronaldmannak): This Swift port and accompanying blog series are designed for Swift developers who may not have a background in data science or Python.
 
 ## unsorted todos
 
