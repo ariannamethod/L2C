@@ -452,7 +452,46 @@ int str_lookup(char *str, TokenIndex *sorted_vocab, int vocab_size) {
     return res != NULL ? res->id : -1;
 }
 
-void encode(Tokenizer* t, char *text, int8_t bos, int8_t eos, int *tokens, int *n_tokens) {
+void process_utf8_bytes(Tokenizer* t, char* c, char* str_buffer, size_t* str_len, int* tokens, int* n_tokens) {
+    // reset buffer if the current byte is ASCII or a leading byte
+    // 0xC0 is 11000000, so (*c & 0xC0) keeps the first 2 bits and zeros the rest
+    // 0x80 is 10000000
+    // in UTF-8, all continuation bytes start with "10" in first two bits
+    // so in English this is: "if this byte is not a continuation byte"
+    if ((*c & 0xC0) != 0x80) {
+        // this byte must be either a leading byte (11...) or an ASCII char (0x...)
+        // => reset our location, as we're starting a new UTF-8 codepoint
+        *str_len = 0;
+    }
+
+    // append the current byte to the buffer
+    str_buffer[(*str_len)++] = *c; // ++ is post-increment, incremented after this line
+    str_buffer[*str_len] = '\0';
+
+    // while the next character is a continuation byte, continue appending
+    // but if there are too many of them, just stop to avoid overruning str_buffer size.
+    if ((*(c+1) & 0xC0) == 0x80 && *str_len < 4) {
+        return; // continue in the calling loop
+    }
+
+    // ok c+1 is not a continuation byte, so we've read in a full codepoint
+    int id = str_lookup(str_buffer, t->sorted_vocab, t->vocab_size);
+
+    if (id != -1) {
+        // we found this codepoint in vocab, add it as a token
+        tokens[(*n_tokens)++] = id;
+    } else {
+        // byte_fallback encoding: just encode each byte as a token
+        // +3 is here because the first 3 vocab elements are <unk>, <s>, </s>
+        // so the individual bytes only start at index 3
+        for (int i=0; i < *str_len; i++) {
+            tokens[(*n_tokens)++] = (unsigned char)str_buffer[i] + 3;
+        }
+    }
+    *str_len = 0; // protect against a sequence of stray UTF8 continuation bytes
+}
+
+void encode(Tokenizer* t, char *text, int8_t bos, int8_t eos, int *tokens, int *n_tokens) { 
     // encode the string text (input) into an upper-bound preallocated tokens[] array
     // bos != 0 means prepend the BOS token (=1), eos != 0 means append the EOS token (=2)
     if (text == NULL) { fprintf(stderr, "cannot encode NULL text\n"); exit(EXIT_FAILURE); }
@@ -497,43 +536,7 @@ void encode(Tokenizer* t, char *text, int8_t bos, int8_t eos, int *tokens, int *
 
     // process the raw (UTF-8) byte sequence of the input string
     for (char *c = text; *c != '\0'; c++) {
-
-        // reset buffer if the current byte is ASCII or a leading byte
-        // 0xC0 is 11000000, so (*c & 0xC0) keeps the first 2 bits and zeros the rest
-        // 0x80 is 10000000
-        // in UTF-8, all continuation bytes start with "10" in first two bits
-        // so in English this is: "if this byte is not a continuation byte"
-        if ((*c & 0xC0) != 0x80) {
-            // this byte must be either a leading byte (11...) or an ASCII char (0x...)
-            // => reset our location, as we're starting a new UTF-8 codepoint
-            str_len = 0;
-        }
-
-        // append the current byte to the buffer
-        str_buffer[str_len++] = *c; // ++ is post-increment, incremented after this line
-        str_buffer[str_len] = '\0';
-
-        // while the next character is a continuation byte, continue appending
-        // but if there are too many of them, just stop to avoid overruning str_buffer size.
-        if ((*(c+1) & 0xC0) == 0x80 && str_len < 4) {
-            continue;
-        }
-
-        // ok c+1 is not a continuation byte, so we've read in a full codepoint
-        int id = str_lookup(str_buffer, t->sorted_vocab, t->vocab_size);
-
-        if (id != -1) {
-            // we found this codepoint in vocab, add it as a token
-            tokens[(*n_tokens)++] = id;
-        } else {
-            // byte_fallback encoding: just encode each byte as a token
-            // +3 is here because the first 3 vocab elements are <unk>, <s>, </s>
-            // so the individual bytes only start at index 3
-            for (int i=0; i < str_len; i++) {
-                tokens[(*n_tokens)++] = (unsigned char)str_buffer[i] + 3;
-            }
-        }
-        str_len = 0; // protect against a sequence of stray UTF8 continuation bytes
+        process_utf8_bytes(t, c, str_buffer, &str_len, tokens, n_tokens);
     }
 
     // merge the best consecutive pair each iteration, according the scores in vocab_scores
