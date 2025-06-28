@@ -805,6 +805,16 @@ void read_stdin(const char* guide, char* buffer, size_t bufsize) {
 // python reference and that seemed ok, but this was not thoroughly tested and
 // is not safely implemented, it's more a proof of concept atm.
 
+void render_chat_prompt(char* system_prompt, char* user_prompt, char* rendered_prompt, int pos) {
+    if (pos == 0 && system_prompt[0] != '\0') {
+        char system_template[] = "[INST] <<SYS>>\n%s\n<</SYS>>\n\n%s [/INST]";
+        sprintf(rendered_prompt, system_template, system_prompt, user_prompt);
+    } else {
+        char user_template[] = "[INST] %s [/INST]";
+        sprintf(rendered_prompt, user_template, user_prompt);
+    }
+}
+
 void chat(Transformer *transformer, Tokenizer *tokenizer, Sampler *sampler,
           char *cli_user_prompt, char *cli_system_prompt, int steps) {
 
@@ -846,14 +856,7 @@ void chat(Transformer *transformer, Tokenizer *tokenizer, Sampler *sampler,
                 // otherwise get user prompt from stdin
                 read_stdin("User: ", user_prompt, sizeof(user_prompt));
             }
-            // render user/system prompts into the Llama 2 Chat schema
-            if (pos == 0 && system_prompt[0] != '\0') {
-                char system_template[] = "[INST] <<SYS>>\n%s\n<</SYS>>\n\n%s [/INST]";
-                sprintf(rendered_prompt, system_template, system_prompt, user_prompt);
-            } else {
-                char user_template[] = "[INST] %s [/INST]";
-                sprintf(rendered_prompt, user_template, user_prompt);
-            }
+            render_chat_prompt(system_prompt, user_prompt, rendered_prompt, pos);
             // encode the rendered prompt into tokens
             encode(tokenizer, rendered_prompt, 1, 0, prompt_tokens, &num_prompt_tokens);
             user_idx = 0; // reset the user index
