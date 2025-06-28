@@ -837,25 +837,7 @@ void chat(Transformer *transformer, Tokenizer *tokenizer, Sampler *sampler,
 
         // when it is the user's turn to contribute tokens to the dialog...
         if (user_turn) {
-            // get the (optional) system prompt at position 0
-            if (pos == 0) {
-                // at position 0, the user can also contribute a system prompt
-                if (cli_system_prompt == NULL) {
-                    // system prompt was not passed in, attempt to get it from stdin
-                    read_stdin("Enter system prompt (optional): ", system_prompt, sizeof(system_prompt));
-                } else {
-                    // system prompt was passed in, use it
-                    strcpy(system_prompt, cli_system_prompt);
-                }
-            }
-            // get the user prompt
-            if (pos == 0 && cli_user_prompt != NULL) {
-                // user prompt for position 0 was passed in, use it
-                strcpy(user_prompt, cli_user_prompt);
-            } else {
-                // otherwise get user prompt from stdin
-                read_stdin("User: ", user_prompt, sizeof(user_prompt));
-            }
+            get_chat_prompts(system_prompt, user_prompt, cli_user_prompt, cli_system_prompt, pos);
             render_chat_prompt(system_prompt, user_prompt, rendered_prompt, pos);
             // encode the rendered prompt into tokens
             encode(tokenizer, rendered_prompt, 1, 0, prompt_tokens, &num_prompt_tokens);
