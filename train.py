@@ -90,25 +90,29 @@ assert vocab_source in ["llama2", "custom"]
 assert vocab_source == "custom" or vocab_size == 32000, "The vocab from Meta has 32K tokens"
 
 # various inits, derived attributes, I/O setup
-ddp = int(os.environ.get("RANK", -1)) != -1  # is this a ddp run?
-if ddp:
-    init_process_group(backend="nccl")
-    ddp_rank = int(os.environ["RANK"])
-    ddp_local_rank = int(os.environ["LOCAL_RANK"])
-    ddp_world_size = int(os.environ["WORLD_SIZE"])
-    device = f"cuda:{ddp_local_rank}"
-    torch.cuda.set_device(device)
-    master_process = ddp_rank == 0  # this process will do logging, checkpointing etc.
-    seed_offset = ddp_rank  # each process gets a different seed
-    # world_size number of processes will be training simultaneously, so we can scale
-    # down the desired gradient accumulation iterations per process proportionally
-    assert gradient_accumulation_steps % ddp_world_size == 0
-    gradient_accumulation_steps //= ddp_world_size
-else:
-    # if not ddp, we are running on a single gpu, and one process
-    master_process = True
-    seed_offset = 0
-    ddp_world_size = 1
+def setup_ddp(gradient_accumulation_steps):
+    ddp = int(os.environ.get("RANK", -1)) != -1  # is this a ddp run?
+    if ddp:
+        init_process_group(backend="nccl")
+        ddp_rank = int(os.environ["RANK"])
+        ddp_local_rank = int(os.environ["LOCAL_RANK"])
+        ddp_world_size = int(os.environ["WORLD_SIZE"])
+        device = f"cuda:{ddp_local_rank}"
+        torch.cuda.set_device(device)
+        master_process = ddp_rank == 0  # this process will do logging, checkpointing etc.
+        seed_offset = ddp_rank  # each process gets a different seed
+        # world_size number of processes will be training simultaneously, so we can scale
+        # down the desired gradient accumulation iterations per process proportionally
+        assert gradient_accumulation_steps % ddp_world_size == 0
+        gradient_accumulation_steps //= ddp_world_size
+    else:
+        # if not ddp, we are running on a single gpu, and one process
+        master_process = True
+        seed_offset = 0
+        ddp_world_size = 1
+    return ddp, ddp_rank, ddp_local_rank, ddp_world_size, device, master_process, seed_offset, gradient_accumulation_steps
+
+ddp, ddp_rank, ddp_local_rank, ddp_world_size, device, master_process, seed_offset, gradient_accumulation_steps = setup_ddp(gradient_accumulation_steps)
 tokens_per_iter = gradient_accumulation_steps * ddp_world_size * batch_size * max_seq_len
 if master_process:
     print(f"tokens per iteration will be: {tokens_per_iter:,}")
