@@ -267,7 +267,7 @@ while True:
     for param_group in optimizer.param_groups:
         param_group["lr"] = lr
 
-    def save_checkpoint(raw_model, optimizer, model_args, iter_num, best_val_loss, config, out_dir, eval_interval, master_process, wandb_log, tokens_per_iter, eval_only, always_save_checkpoint, losses, running_mfu, lr):
+    def save_checkpoint(raw_model, optimizer, model_args, iter_num, best_val_loss, config, out_dir):
     checkpoint = {
         "model": raw_model.state_dict(),
         "optimizer": optimizer.state_dict(),
@@ -288,30 +288,3 @@ local_iter_num = 0  # number of iterations in the lifetime of this process
 raw_model = model.module if ddp else model  # unwrap DDP container if needed
 running_mfu = -1.0
 while True:
-    # determine and set the learning rate for this iteration
-    lr = get_lr(iter_num) if decay_lr else learning_rate
-    for param_group in optimizer.param_groups:
-        param_group["lr"] = lr
-
-    # evaluate the loss on train/val sets and write checkpoints
-    if iter_num % eval_interval == 0 and master_process:
-        losses = estimate_loss()
-        print(f"step {iter_num}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}")
-        if wandb_log:
-            try:
-                wandb.log(
-                    {
-                        "iter": iter_num,
-                        "tokens": iter_num * tokens_per_iter,
-                        "loss/train": losses["train"],
-                        "loss/val": losses["val"],
-                        "lr": lr,
-                        "mfu": running_mfu * 100,  # convert to percentage
-                    }, step = iter_num
-                )
-            except Exception as e:
-                print(f"logging to wandb failed: {e}")
-        if losses["val"] < best_val_loss or always_save_checkpoint:
-            best_val_loss = losses["val"]
-            if iter_num > 0:
-                save_checkpoint(raw_model, optimizer, model_args, iter_num, best_val_loss, config, out_dir, eval_interval, master_process, wandb_log, tokens_per_iter, eval_only, always_save_checkpoint, losses, running_mfu, lr)
