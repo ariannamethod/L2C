@@ -228,6 +228,47 @@ void matmul(float* xout, float* x, float* w, int n, int d) {
     }
 }
 
+void multihead_attention(Config* p, RunState* s, int loff, int kv_dim, int kv_mul, int head_size, int pos) {
+    int h;
+    #pragma omp parallel for private(h)
+    for (h = 0; h < p->n_heads; h++) {
+        // get the query vector for this head
+        float* q = s->q + h * head_size;
+        // attention scores for this head
+        float* att = s->att + h * p->seq_len;
+        // iterate over all timesteps, including the current one
+        for (int t = 0; t <= pos; t++) {
+            // get the key vector for this head and at this timestep
+            float* k = s->key_cache + loff + t * kv_dim + (h / kv_mul) * head_size;
+            // calculate the attention score as the dot product of q and k
+            float score = 0.0f;
+            for (int i = 0; i < head_size; i++) {
+                score += q[i] * k[i];
+            }
+            score /= sqrtf(head_size);
+            // save the score to the attention buffer
+            att[t] = score;
+        }
+
+        // softmax the scores to get attention weights, from 0..pos inclusively
+        softmax(att, pos + 1);
+
+        // weighted sum of the values, store back into xb
+        float* xb = s->xb + h * head_size;
+        memset(xb, 0, head_size * sizeof(float));
+        for (int t = 0; t <= pos; t++) {
+            // get the value vector for this head and at this timestep
+            float* v = s->value_cache + loff + t * kv_dim + (h / kv_mul) * head_size;
+            // get the attention weight for this timestep
+            float a = att[t];
+            // accumulate the weighted value into xb
+            for (int i = 0; i < head_size; i++) {
+                xb[i] += a * v[i];
+            }
+        }
+    }
+}
+
 float* forward(Transformer* transformer, int token, int pos) {
 
     // a few convenience variables
@@ -278,45 +319,7 @@ float* forward(Transformer* transformer, int token, int pos) {
             }
         }
 
-        // multihead attention. iterate over all heads
-        int h;
-        #pragma omp parallel for private(h)
-        for (h = 0; h < p->n_heads; h++) {
-            // get the query vector for this head
-            float* q = s->q + h * head_size;
-            // attention scores for this head
-            float* att = s->att + h * p->seq_len;
-            // iterate over all timesteps, including the current one
-            for (int t = 0; t <= pos; t++) {
-                // get the key vector for this head and at this timestep
-                float* k = s->key_cache + loff + t * kv_dim + (h / kv_mul) * head_size;
-                // calculate the attention score as the dot product of q and k
-                float score = 0.0f;
-                for (int i = 0; i < head_size; i++) {
-                    score += q[i] * k[i];
-                }
-                score /= sqrtf(head_size);
-                // save the score to the attention buffer
-                att[t] = score;
-            }
-
-            // softmax the scores to get attention weights, from 0..pos inclusively
-            softmax(att, pos + 1);
-
-            // weighted sum of the values, store back into xb
-            float* xb = s->xb + h * head_size;
-            memset(xb, 0, head_size * sizeof(float));
-            for (int t = 0; t <= pos; t++) {
-                // get the value vector for this head and at this timestep
-                float* v = s->value_cache + loff + t * kv_dim + (h / kv_mul) * head_size;
-                // get the attention weight for this timestep
-                float a = att[t];
-                // accumulate the weighted value into xb
-                for (int i = 0; i < head_size; i++) {
-                    xb[i] += a * v[i];
-                }
-            }
-        }
+        multihead_attention(p, s, loff, kv_dim, kv_mul, head_size, pos);
 
         // final matmul to get the output of the attention
         matmul(s->xb2, s->xb, w->wo + l*dim*dim, dim, dim);
