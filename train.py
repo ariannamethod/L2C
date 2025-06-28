@@ -261,7 +261,7 @@ while True:
     for param_group in optimizer.param_groups:
         param_group["lr"] = lr
 
-    def save_checkpoint(raw_model, optimizer, model_args, iter_num, best_val_loss, config, out_dir):
+    def save_checkpoint(raw_model, optimizer, model_args, iter_num, best_val_loss, config, out_dir, eval_interval, master_process, wandb_log, tokens_per_iter, eval_only, always_save_checkpoint, losses, running_mfu, lr):
     checkpoint = {
         "model": raw_model.state_dict(),
         "optimizer": optimizer.state_dict(),
@@ -273,6 +273,19 @@ while True:
     print(f"saving checkpoint to {out_dir}")
     torch.save(checkpoint, os.path.join(out_dir, "ckpt.pt"))
     model_export(raw_model, os.path.join(out_dir, "model.bin"), version=0)
+
+# training loop
+train_batch_iter = iter_batches(split="train")
+X, Y = next(train_batch_iter)  # fetch the very first batch
+t0 = time.time()
+local_iter_num = 0  # number of iterations in the lifetime of this process
+raw_model = model.module if ddp else model  # unwrap DDP container if needed
+running_mfu = -1.0
+while True:
+    # determine and set the learning rate for this iteration
+    lr = get_lr(iter_num) if decay_lr else learning_rate
+    for param_group in optimizer.param_groups:
+        param_group["lr"] = lr
 
     # evaluate the loss on train/val sets and write checkpoints
     if iter_num % eval_interval == 0 and master_process:
@@ -295,56 +308,4 @@ while True:
         if losses["val"] < best_val_loss or always_save_checkpoint:
             best_val_loss = losses["val"]
             if iter_num > 0:
-                save_checkpoint(raw_model, optimizer, model_args, iter_num, best_val_loss, config, out_dir)
-    if iter_num == 0 and eval_only:
-        break
-
-    # forward backward update, with optional gradient accumulation to simulate larger batch size
-    # and using the GradScaler if data type is float16
-    for micro_step in range(gradient_accumulation_steps):
-        if ddp:
-            # in DDP training we only need to sync gradients at the last micro step.
-            # the official way to do this is with model.no_sync() context manager, but
-            # I really dislike that this bloats the code and forces us to repeat code
-            # looking at the source of that context manager, it just toggles this variable
-            model.require_backward_grad_sync = micro_step == gradient_accumulation_steps - 1
-        with ctx:
-            logits = model(X, Y)
-            loss = raw_model.last_loss
-            loss = loss / gradient_accumulation_steps
-        # immediately async prefetch next batch while model is doing the forward pass on the GPU
-        X, Y = next(train_batch_iter)
-        # backward pass, with gradient scaling if training in fp16
-        scaler.scale(loss).backward()
-    # clip the gradient
-    if grad_clip != 0.0:
-        scaler.unscale_(optimizer)
-        torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
-    # step the optimizer and scaler if training in fp16
-    scaler.step(optimizer)
-    scaler.update()
-    # flush the gradients as soon as we can, no need for this memory anymore
-    optimizer.zero_grad(set_to_none=True)
-
-    # timing and logging
-    t1 = time.time()
-    dt = t1 - t0
-    t0 = t1
-    if iter_num % log_interval == 0 and master_process:
-        # get loss as float, scale up due to the divide above. note: this is a CPU-GPU sync point
-        lossf = loss.item() * gradient_accumulation_steps
-        if local_iter_num >= 5:  # let the training loop settle a bit
-            mfu = raw_model.estimate_mfu(batch_size * gradient_accumulation_steps, dt)
-            running_mfu = mfu if running_mfu == -1.0 else 0.9 * running_mfu + 0.1 * mfu
-        print(
-            f"{iter_num} | loss {lossf:.4f} | lr {lr:e} | {dt*1000:.2f}ms | mfu {running_mfu*100:.2f}%"
-        )
-    iter_num += 1
-    local_iter_num += 1
-
-    # termination conditions
-    if iter_num > max_iters:
-        break
-
-if ddp:
-    destroy_process_group()
+                save_checkpoint(raw_model, optimizer, model_args, iter_num, best_val_loss, config, out_dir, eval_interval, master_process, wandb_log, tokens_per_iter, eval_only, always_save_checkpoint, losses, running_mfu, lr)
