@@ -148,6 +148,38 @@ iter_num = 0
 best_val_loss = 1e9
 
 # model init
+def initialize_model(init_from, out_dir, model_args, device):
+    if init_from == "scratch":
+        # init a new model from scratch
+        print("Initializing a new model from scratch")
+        gptconf = ModelArgs(**model_args)
+        model = Transformer(gptconf)
+    elif init_from == "resume":
+        print(f"Resuming training from {out_dir}")
+        # resume training from a checkpoint.
+        ckpt_path = os.path.join(out_dir, "ckpt.pt")
+        checkpoint = torch.load(ckpt_path, map_location=device)
+        checkpoint_model_args = checkpoint["model_args"]
+        # force these config attributes to be equal otherwise we can't even resume training
+        # the rest of the attributes (e.g. dropout) can stay as desired from command line
+        for k in ["dim", "n_layers", "n_heads", "n_kv_heads", "vocab_size", "multiple_of", "max_seq_len"]:
+            model_args[k] = checkpoint_model_args[k]
+        # create the model
+        gptconf = ModelArgs(**model_args)
+        model = Transformer(gptconf)
+        state_dict = checkpoint["model"]
+        # fix the keys of the state dictionary :(
+        # honestly no idea how checkpoints sometimes get this prefix, have to debug more
+        unwanted_prefix = "_orig_mod."
+        for k, v in list(state_dict.items()):
+            if k.startswith(unwanted_prefix):
+                state_dict[k[len(unwanted_prefix) :]] = state_dict.pop(k)
+        model.load_state_dict(state_dict)
+        iter_num = checkpoint["iter_num"]
+        best_val_loss = checkpoint["best_val_loss"]
+    model.to(device)
+    return model, iter_num, best_val_loss
+
 model_args = dict(
     dim=dim,
     n_layers=n_layers,
@@ -158,44 +190,18 @@ model_args = dict(
     max_seq_len=max_seq_len,
     dropout=dropout,
 )  # start with model_args from command line
-if init_from == "scratch":
-    # init a new model from scratch
-    print("Initializing a new model from scratch")
-    gptconf = ModelArgs(**model_args)
-    model = Transformer(gptconf)
-elif init_from == "resume":
-    print(f"Resuming training from {out_dir}")
-    # resume training from a checkpoint.
-    ckpt_path = os.path.join(out_dir, "ckpt.pt")
-    checkpoint = torch.load(ckpt_path, map_location=device)
-    checkpoint_model_args = checkpoint["model_args"]
-    # force these config attributes to be equal otherwise we can't even resume training
-    # the rest of the attributes (e.g. dropout) can stay as desired from command line
-    for k in ["dim", "n_layers", "n_heads", "n_kv_heads", "vocab_size", "multiple_of", "max_seq_len"]:
-        model_args[k] = checkpoint_model_args[k]
-    # create the model
-    gptconf = ModelArgs(**model_args)
-    model = Transformer(gptconf)
-    state_dict = checkpoint["model"]
-    # fix the keys of the state dictionary :(
-    # honestly no idea how checkpoints sometimes get this prefix, have to debug more
-    unwanted_prefix = "_orig_mod."
-    for k, v in list(state_dict.items()):
-        if k.startswith(unwanted_prefix):
-            state_dict[k[len(unwanted_prefix) :]] = state_dict.pop(k)
-    model.load_state_dict(state_dict)
-    iter_num = checkpoint["iter_num"]
-    best_val_loss = checkpoint["best_val_loss"]
-model.to(device)
+model, iter_num, best_val_loss = initialize_model(init_from, out_dir, model_args, device)
 
 # initialize a GradScaler. If enabled=False scaler is a no-op
-scaler = torch.cuda.amp.GradScaler(enabled=(dtype == "float16"))
+def setup_optimizer(model, weight_decay, learning_rate, beta1, beta2, device_type, init_from, checkpoint):
+    scaler = torch.cuda.amp.GradScaler(enabled=(dtype == "float16"))
+    optimizer = model.configure_optimizers(weight_decay, learning_rate, (beta1, beta2), device_type)
+    if init_from == "resume" and "optimizer" in checkpoint:
+        optimizer.load_state_dict(checkpoint["optimizer"])
+    checkpoint = None  # free up memory
+    return scaler, optimizer
 
-# optimizer
-optimizer = model.configure_optimizers(weight_decay, learning_rate, (beta1, beta2), device_type)
-if init_from == "resume" and "optimizer" in checkpoint:
-    optimizer.load_state_dict(checkpoint["optimizer"])
-checkpoint = None  # free up memory
+scaler, optimizer = setup_optimizer(model, weight_decay, learning_rate, beta1, beta2, device_type, init_from, checkpoint)
 
 # compile the model
 if compile:
