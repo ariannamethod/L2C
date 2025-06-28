@@ -261,15 +261,7 @@ while True:
     for param_group in optimizer.param_groups:
         param_group["lr"] = lr
 
-    # training loop
-train_batch_iter = iter_batches(split="train")
-X, Y = next(train_batch_iter)  # fetch the very first batch
-t0 = time.time()
-local_iter_num = 0  # number of iterations in the lifetime of this process
-raw_model = model.module if ddp else model  # unwrap DDP container if needed
-running_mfu = -1.0
-
-def save_checkpoint(raw_model, optimizer, model_args, iter_num, best_val_loss, config, out_dir):
+    def save_checkpoint(raw_model, optimizer, model_args, iter_num, best_val_loss, config, out_dir):
     checkpoint = {
         "model": raw_model.state_dict(),
         "optimizer": optimizer.state_dict(),
@@ -282,4 +274,11 @@ def save_checkpoint(raw_model, optimizer, model_args, iter_num, best_val_loss, c
     torch.save(checkpoint, os.path.join(out_dir, "ckpt.pt"))
     model_export(raw_model, os.path.join(out_dir, "model.bin"), version=0)
 
+# training loop
+train_batch_iter = iter_batches(split="train")
+X, Y = next(train_batch_iter)  # fetch the very first batch
+t0 = time.time()
+local_iter_num = 0  # number of iterations in the lifetime of this process
+raw_model = model.module if ddp else model  # unwrap DDP container if needed
+running_mfu = -1.0
 while True:
