@@ -1,59 +1,59 @@
-import math
-import struct
-import inspect
-from dataclasses import dataclass
-from typing import Any, Optional, Tuple
+ math
+ struct
+ inspect
+ dataclasses  dataclass
+ typing   Any, Optional, Tuple
 
-import numpy as np
-import torch
-import torch.nn.functional as F
-from torch import nn
+ numpy    np
+ torch
+ torch.nn.functional    F
+ torch   nn
 
 @dataclass
-class ModelArgs:
+      ModelArgs:
     # default hyperparameters for the Llama 7B model
     dim: int = 4096
     n_layers: int = 32
     n_heads: int = 32
-    n_kv_heads: Optional[int] = None
+    n_kv_heads: Optional[int] = 
     vocab_size: int = 32000
-    hidden_dim: Optional[int] = None
+    hidden_dim: Optional[int] = 
     multiple_of: int = 256  # MLP hidden layer size will be multiple of
     norm_eps: float = 1e-5
     max_seq_len: int = 2048
     dropout: float = 0.0
 
 
-class RMSNorm(torch.nn.Module):
-    def __init__(self, dim: int, eps: float):
+      RMSNorm(torch.nn.Module):
+        __init__(self, dim: int, eps: float):
         super().__init__()
         self.eps = eps
         self.weight = nn.Parameter(torch.ones(dim))
 
-    def _norm(self, x):
-        return x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + self.eps)
+        _norm(self, x):
+               x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + self.eps)
 
-    def forward(self, x):
+        forward(self, x):
         output = self._norm(x.float()).type_as(x)
-        return output * self.weight
+               output * self.weight
 
 
-def precompute_freqs_cis(dim: int, end: int, theta: float = 10000.0):
+    precompute_freqs_cis(dim: int, end: int, theta: float = 10000.0):
     freqs = 1.0 / (theta ** (torch.arange(0, dim, 2)[: (dim // 2)].float() / dim))
     t = torch.arange(end, device=freqs.device)  # type: ignore
     freqs = torch.outer(t, freqs).float()  # type: ignore
     freqs_cos = torch.cos(freqs)  # real part
     freqs_sin = torch.sin(freqs)  # imaginary part
-    return freqs_cos, freqs_sin
+           freqs_cos, freqs_sin
 
-def reshape_for_broadcast(freqs_cis: torch.Tensor, x: torch.Tensor):
+    reshape_for_broadcast(freqs_cis: torch.Tensor, x: torch.Tensor):
     ndim = x.ndim
-    assert 0 <= 1 < ndim
-    assert freqs_cis.shape == (x.shape[1], x.shape[-1])
-    shape = [d if i == 1 or i == ndim - 1 else 1 for i, d in enumerate(x.shape)]
-    return freqs_cis.view(shape)
+           0 <= 1 < ndim
+           freqs_cis.shape == (x.shape[1], x.shape[-1])
+    shape = [d    i == 1    i == ndim - 1      1     i, d    enumerate(x.shape)]
+           freqs_cis.view(shape)
 
-def apply_rotary_emb(
+    apply_rotary_emb(
     xq: torch.Tensor,
     xk: torch.Tensor,
     freqs_cos: torch.Tensor,
@@ -78,21 +78,21 @@ def apply_rotary_emb(
     xq_out = torch.stack([xq_out_r, xq_out_i], dim=-1).flatten(3)
     xk_out = torch.stack([xk_out_r, xk_out_i], dim=-1).flatten(3)
 
-    return xq_out.type_as(xq), xk_out.type_as(xk)
+           xq_out.type_as(xq), xk_out.type_as(xk)
 
-def repeat_kv(x: torch.Tensor, n_rep: int) -> torch.Tensor:
+    repeat_kv(x: torch.Tensor, n_rep: int) -> torch.Tensor:
     """torch.repeat_interleave(x, dim=2, repeats=n_rep)"""
     bs, slen, n_kv_heads, head_dim = x.shape
-    if n_rep == 1:
-        return x
-    return (
-        x[:, :, :, None, :]
+       n_rep == 1:
+              x
+           (
+        x[:, :, :,     , :]
         .expand(bs, slen, n_kv_heads, n_rep, head_dim)
         .reshape(bs, slen, n_kv_heads * n_rep, head_dim)
     )
 
-class Attention(nn.Module):
-    def __init__(self, args: ModelArgs):
+      Attention(nn.Module):
+       __init__(self, args: ModelArgs):
         super().__init__()
         self.n_kv_heads = args.n_heads if args.n_kv_heads is None else args.n_kv_heads
         assert args.n_heads % self.n_kv_heads == 0
@@ -111,13 +111,13 @@ class Attention(nn.Module):
 
         # use flash attention or a manual implementation?
         self.flash = hasattr(torch.nn.functional, 'scaled_dot_product_attention')
-        if not self.flash:
+               self.flash:
             print("WARNING: using slow attention. Flash Attention requires PyTorch >= 2.0")
             mask = torch.full((1, 1, args.max_seq_len, args.max_seq_len), float("-inf"))
             mask = torch.triu(mask, diagonal=1)
             self.register_buffer("mask", mask)
 
-    def forward(
+         forward(
         self,
         x: torch.Tensor,
         freqs_cos: torch.Tensor,
@@ -144,12 +144,12 @@ class Attention(nn.Module):
         xv = xv.transpose(1, 2)
 
         # flash implementation
-        if self.flash:
+           self.flash:
             output = torch.nn.functional.scaled_dot_product_attention(xq, xk, xv, attn_mask=None, dropout_p=self.dropout if self.training else 0.0, is_causal=True)
-        else:
+            :
             # manual implementation
             scores = torch.matmul(xq, xk.transpose(2, 3)) / math.sqrt(self.head_dim)
-            assert hasattr(self, 'mask')
+                   hasattr(self, 'mask')
             scores = scores + self.mask[:, :, :seqlen, :seqlen]   # (bs, n_local_heads, seqlen, cache_len + seqlen)
             scores = F.softmax(scores.float(), dim=-1).type_as(xq)
             scores = self.attn_dropout(scores)
@@ -161,13 +161,13 @@ class Attention(nn.Module):
         # final projection into the residual stream
         output = self.wo(output)
         output = self.resid_dropout(output)
-        return output
+               output
 
 
-class FeedForward(nn.Module):
-    def __init__(self, dim: int, hidden_dim: int, multiple_of: int, dropout: float):
+      FeedForward(nn.Module):
+       __init__(self, dim: int, hidden_dim: int, multiple_of: int, dropout: float):
         super().__init__()
-        if hidden_dim is None:
+           hidden_dim        :
             hidden_dim = 4 * dim
             hidden_dim = int(2 * hidden_dim / 3)
             hidden_dim = multiple_of * ((hidden_dim + multiple_of - 1) // multiple_of)
@@ -176,12 +176,12 @@ class FeedForward(nn.Module):
         self.w3 = nn.Linear(dim, hidden_dim, bias=False)
         self.dropout = nn.Dropout(dropout)
 
-    def forward(self, x):
-        return self.dropout(self.w2(F.silu(self.w1(x)) * self.w3(x)))
+        forward(self, x):
+               self.dropout(self.w2(F.silu(self.w1(x)) * self.w3(x)))
 
 
-class TransformerBlock(nn.Module):
-    def __init__(self, layer_id: int, args: ModelArgs):
+       TransformerBlock(nn.Module):
+        __init__(self, layer_id: int, args: ModelArgs):
         super().__init__()
         self.n_heads = args.n_heads
         self.dim = args.dim
@@ -197,16 +197,16 @@ class TransformerBlock(nn.Module):
         self.attention_norm = RMSNorm(args.dim, eps=args.norm_eps)
         self.ffn_norm = RMSNorm(args.dim, eps=args.norm_eps)
 
-    def forward(self, x, freqs_cos, freqs_sin):
+        forward(self, x, freqs_cos, freqs_sin):
         h = x + self.attention.forward(self.attention_norm(x), freqs_cos, freqs_sin)
         out = h + self.feed_forward.forward(self.ffn_norm(h))
-        return out
+               out
 
 
-class Transformer(nn.Module):
+      Transformer(nn.Module):
     last_loss: Optional[torch.Tensor]
 
-    def __init__(self, params: ModelArgs):
+        __init__(self, params: ModelArgs):
         super().__init__()
         self.params = params
         self.vocab_size = params.vocab_size
@@ -215,7 +215,7 @@ class Transformer(nn.Module):
         self.tok_embeddings = nn.Embedding(params.vocab_size, params.dim)
         self.dropout = nn.Dropout(params.dropout)
         self.layers = torch.nn.ModuleList()
-        for layer_id in range(params.n_layers):
+            layer_id    range(params.n_layers):
             self.layers.append(TransformerBlock(layer_id, params))
         self.norm = RMSNorm(params.dim, eps=params.norm_eps)
         self.output = nn.Linear(params.dim, params.vocab_size, bias=False)
@@ -231,74 +231,74 @@ class Transformer(nn.Module):
         # init all weights
         self.apply(self._init_weights)
         # apply special scaled init to the residual projections, per GPT-2 paper
-        for pn, p in self.named_parameters():
-            if pn.endswith('w3.weight') or pn.endswith('wo.weight'):
+            pn, p    self.named_parameters():
+               pn.endswith('w3.weight')    pn.endswith('wo.weight'):
                 torch.nn.init.normal_(p, mean=0.0, std=0.02/math.sqrt(2 * params.n_layers))
 
         # Initialize attribute for the loss of the last forward call. This will be set if the forward is called with a targets tensor.
-        self.last_loss = None
+        self.last_loss = 
 
-    def _init_weights(self, module):
-        if isinstance(module, nn.Linear):
+        _init_weights(self, module):
+           isinstance(module, nn.Linear):
             torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
-            if module.bias is not None:
+               module.bias            :
                 torch.nn.init.zeros_(module.bias)
-        elif isinstance(module, nn.Embedding):
+             isinstance(module, nn.Embedding):
             torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
 
-    def forward(self, tokens: torch.Tensor, targets: Optional[torch.Tensor] = None) -> torch.Tensor:
+         forward(self, tokens: torch.Tensor, targets: Optional[torch.Tensor] =     ) -> torch.Tensor:
         _bsz, seqlen = tokens.shape
         h = self.tok_embeddings(tokens)
         h = self.dropout(h)
         freqs_cos = self.freqs_cos[:seqlen]
         freqs_sin = self.freqs_sin[:seqlen]
 
-        for layer in self.layers:
+            layer    self.layers:
             h = layer(h, freqs_cos, freqs_sin)
         h = self.norm(h)
 
-        if targets is not None:
+           targets            :
             # if we are given some desired targets also calculate the loss
             logits = self.output(h)
             self.last_loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
-        else:
+            :
             # inference-time mini-optimization: only forward the output on the very last position
             logits = self.output(h[:, [-1], :]) # note: using list [-1] to preserve the time dim
-            self.last_loss = None
+            self.last_loss = 
 
-        return logits
+               logits
 
-    def configure_optimizers(self, weight_decay, learning_rate, betas, device_type):
+        configure_optimizers(self, weight_decay, learning_rate, betas, device_type):
         # start with all of the candidate parameters
-        param_dict = {pn: p for pn, p in self.named_parameters()}
+        param_dict = {pn: p     pn, p    self.named_parameters()}
         # filter out those that do not require grad
-        param_dict = {pn: p for pn, p in param_dict.items() if p.requires_grad}
+        param_dict = {pn: p     pn, p    param_dict.items()    p.requires_grad}
         # create optim groups. Any parameters that is 2D will be weight decayed, otherwise no.
         # i.e. all weight tensors in matmuls + embeddings decay, all biases and layernorms don't.
-        decay_params = [p for n, p in param_dict.items() if p.dim() >= 2]
-        nodecay_params = [p for n, p in param_dict.items() if p.dim() < 2]
+        decay_params = [p     n, p  param_dict.items()    p.dim() >= 2]
+        nodecay_params = [p     n, p    param_dict.items()    p.dim() < 2]
         optim_groups = [
             {'params': decay_params, 'weight_decay': weight_decay},
             {'params': nodecay_params, 'weight_decay': 0.0}
         ]
-        num_decay_params = sum(p.numel() for p in decay_params)
-        num_nodecay_params = sum(p.numel() for p in nodecay_params)
+        num_decay_params = sum(p.numel()     p    decay_params)
+        num_nodecay_params = sum(p.numel()     p    nodecay_params)
         print(f"num decayed parameter tensors: {len(decay_params)}, with {num_decay_params:,} parameters")
         print(f"num non-decayed parameter tensors: {len(nodecay_params)}, with {num_nodecay_params:,} parameters")
         # Create AdamW optimizer and use the fused version if it is available
-        fused_available = 'fused' in inspect.signature(torch.optim.AdamW).parameters
-        use_fused = fused_available and device_type == 'cuda'
-        extra_args = dict(fused=True) if use_fused else dict()
+        fused_available = 'fused'    inspect.signature(torch.optim.AdamW).parameters
+        use_fused = fused_available     device_type == 'cuda'
+        extra_args = dict(fused=True)    use_fused      dict()
         optimizer = torch.optim.AdamW(optim_groups, lr=learning_rate, betas=betas, **extra_args)
         print(f"using fused AdamW: {use_fused}")
 
-        return optimizer
+                optimizer
 
-    def estimate_mfu(self, fwdbwd_per_iter, dt):
+        estimate_mfu(self, fwdbwd_per_iter, dt):
         """ estimate model flops utilization (MFU) in units of A100 bfloat16 peak FLOPS """
         # first estimate the number of flops we do per iteration.
         # see PaLM paper Appendix B as ref: https://arxiv.org/abs/2204.02311
-        N = sum(p.numel() for p in self.parameters())
+        N = sum(p.numel()     p    self.parameters())
         cfg = self.params
         L, H, Q, T = cfg.n_layers, cfg.n_heads, cfg.dim//cfg.n_heads, cfg.max_seq_len
         flops_per_token = 6*N + 12*L*H*Q*T
@@ -308,30 +308,30 @@ class Transformer(nn.Module):
         flops_achieved = flops_per_iter * (1.0/dt) # per second
         flops_promised = 312e12 # A100 GPU bfloat16 peak flops is 312 TFLOPS
         mfu = flops_achieved / flops_promised
-        return mfu
+               mfu
 
     @torch.inference_mode()
-    def generate(self, idx, max_new_tokens, temperature=1.0, top_k=None):
+        generate(self, idx, max_new_tokens, temperature=1.0, top_k=    ):
         """
         Take a conditioning sequence of indices idx (LongTensor of shape (b,t)) and complete
         the sequence max_new_tokens times, feeding the predictions back into the model each time.
         Most likely you'll want to make sure to be in model.eval() mode of operation for this.
         Also note this is a super inefficient version of sampling with no key/value cache.
         """
-        for _ in range(max_new_tokens):
+            _    range(max_new_tokens):
             # if the sequence context is growing too long we must crop it at block_size
-            idx_cond = idx if idx.size(1) <= self.params.max_seq_len else idx[:, -self.params.max_seq_len:]
+            idx_cond = idx    idx.size(1) <= self.params.max_seq_len      idx[:, -self.params.max_seq_len:]
             # forward the model to get the logits for the index in the sequence
             logits = self(idx_cond)
             logits = logits[:, -1, :] # crop to just the final time step
-            if temperature == 0.0:
+               temperature == 0.0:
                 # "sample" the single most likely index
                 _, idx_next = torch.topk(logits, k=1, dim=-1)
-            else:
+               :
                 # pluck the logits at the final step and scale by desired temperature
                 logits = logits / temperature
                 # optionally crop the logits to only the top k options
-                if top_k is not None:
+                   top_k            :
                     v, _ = torch.topk(logits, min(top_k, logits.size(-1)))
                     logits[logits < v[:, [-1]]] = -float('Inf')
                 # apply softmax to convert logits to (normalized) probabilities
@@ -340,4 +340,4 @@ class Transformer(nn.Module):
             # append sampled index to the running sequence and continue
             idx = torch.cat((idx, idx_next), dim=1)
 
-        return idx
+                  idx
