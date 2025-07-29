@@ -77,6 +77,7 @@ def load_core_prompt(path: str = CORE_PROMPT_FILE) -> str:
     return DEFAULT_CORE_PROMPT
 
 DATASET_DIR = "datasets"
+CONVERSATION_DIR = os.path.join("logs", "conversations")
 LOG_DIR = "log"
 LOG_FILE = os.path.join(LOG_DIR, "train_log.json")
 MAX_DATASET_SIZE = 5 * 1024 * 1024  # 5MB
@@ -158,6 +159,21 @@ def tokenize_file(path: str):
     return tok.encode(text, bos=True, eos=False)
 
 
+def tokenize_conversation(path: str):
+    """Tokenize a conversation log JSON file."""
+    from tokenizer import Tokenizer
+
+    tok = Tokenizer()
+    with open(path, 'r', encoding='utf-8') as f:
+        data = json.load(f)
+    lines = []
+    for t in data.get('turns', []):
+        lines.append(t.get('user', ''))
+        lines.append(t.get('l2c', ''))
+    text = "\n".join(lines)
+    return tok.encode(text, bos=True, eos=False)
+
+
 def train(dataset_path: str) -> None:
     """Placeholder training routine."""
     logger.info('Training on %s (stub implementation)', dataset_path)
@@ -199,6 +215,7 @@ def _needs_training(entries: list, filename: str, sha256: str) -> bool:
 
 
 def check_dataset_updates(dataset_dir: str = DATASET_DIR,
+                          conv_dir: str = CONVERSATION_DIR,
                           log_path: str = LOG_FILE):
     """Return list of dataset paths needing training and existing log entries."""
     entries = _load_train_log(log_path)
@@ -211,15 +228,30 @@ def check_dataset_updates(dataset_dir: str = DATASET_DIR,
             continue
         sha256 = compute_sha256(item.path)
         if _needs_training(entries, item.name, sha256):
-            datasets.append((item.path, item.name, sha256))
+            datasets.append((item.path, item.name, sha256, 'file'))
+    if os.path.isdir(conv_dir):
+        for item in os.scandir(conv_dir):
+            if not item.is_file() or not item.name.lower().endswith('.json'):
+                continue
+            if os.path.getsize(item.path) > MAX_DATASET_SIZE:
+                logger.warning('%s exceeds size limit and will be ignored', item.name)
+                continue
+            sha256 = compute_sha256(item.path)
+            if _needs_training(entries, item.name, sha256):
+                datasets.append((item.path, item.name, sha256, 'log'))
     return datasets, entries
 
 
-def auto_train(dataset_dir: str = DATASET_DIR, log_path: str = LOG_FILE) -> None:
-    """Automatically tokenize and train on new datasets."""
-    datasets, entries = check_dataset_updates(dataset_dir, log_path)
-    for path, name, sha256 in datasets:
-        tokenize_file(path)
+def auto_train(dataset_dir: str = DATASET_DIR,
+               conv_dir: str = CONVERSATION_DIR,
+               log_path: str = LOG_FILE) -> None:
+    """Automatically tokenize and train on new datasets and logs."""
+    datasets, entries = check_dataset_updates(dataset_dir, conv_dir, log_path)
+    for path, name, sha256, kind in datasets:
+        if kind == 'file':
+            tokenize_file(path)
+        else:
+            tokenize_conversation(path)
         train(path)
         entries.append({
             'filename': name,
