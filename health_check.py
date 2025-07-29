@@ -31,9 +31,5 @@ def check():
     return {'available': available, 'speed_chars_per_s': speed, 'entropy': entropy}
 
 
-if __name__ == '__main__':
-    logging.basicConfig(level=logging.INFO)
-    metrics = check()
-    for k, v in metrics.items():
-        print(f'{k}: {v}')
+
 

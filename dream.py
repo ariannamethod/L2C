@@ -1,5 +1,4 @@
 import os
-import time
 from datetime import datetime
 from l2c import generate
 
@@ -16,9 +15,5 @@ def dream():
     return path
 
 
-if __name__ == '__main__':
-    while True:
-        path = dream()
-        print('dream saved to', path)
-        time.sleep(5)
+
 
