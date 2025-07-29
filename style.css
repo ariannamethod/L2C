@@ -1,0 +1,35 @@
+body {
+  background-color: black;
+  color: #00ff00;
+  font-family: monospace;
+  padding: 20px;
+}
+
+#chat {
+  margin-bottom: 10px;
+}
+
+input {
+  background: black;
+  color: #00ff00;
+  border: 1px solid #00ff00;
+  padding: 5px;
+}
+
+button {
+  background: black;
+  color: #00ff00;
+  border: 1px solid #00ff00;
+  padding: 5px 10px;
+  cursor: pointer;
+}
+
+.cursor {
+  display: inline-block;
+  animation: blink 1s step-end infinite;
+}
+
+@keyframes blink {
+  from, to { visibility: hidden; }
+  50% { visibility: visible; }
+}
