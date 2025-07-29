@@ -2,6 +2,7 @@ import argparse
 import logging
 
 import l2c
+from session_logger import SESSION_ID, log_turn
 
 logger = logging.getLogger(__name__)
 
@@ -15,8 +16,12 @@ def main() -> None:
     parser.add_argument("--tokens", metavar="FILE", help="tokenize file")
     args = parser.parse_args()
 
+    print(f"L2C | New session started: {SESSION_ID}")
+
     if args.prompt is not None:
-        print(l2c.generate(args.prompt))
+        response = l2c.generate(args.prompt)
+        print(response)
+        log_turn(args.prompt, response)
     elif args.dream:
         l2c.dream_loop()
     elif args.health:
