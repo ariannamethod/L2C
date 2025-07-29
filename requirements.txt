@@ -1,3 +1,9 @@
+setuptools
+wheel
+# остальные твои зависимости
+fastapi==0.110.0
+uvicorn==0.29.0
+orjson==3.10.1
 numpy==1.23.5
 pytest==7.4.0
 requests==2.31.0
@@ -6,7 +12,3 @@ tiktoken==0.3.3
 torch==2.0.1
 tqdm==4.64.1
 wandb==0.15.5
-fastapi==0.110.0
-uvicorn==0.29.0
-orjson==3.10.1
-setuptools
