@@ -1,10 +1,18 @@
 import ctypes
 import os
+import json
+import hashlib
+import datetime
 import logging
 
 logger = logging.getLogger(__name__)
 
 _lib = None
+
+DATASET_DIR = "datasets"
+LOG_DIR = "log"
+LOG_FILE = os.path.join(LOG_DIR, "train_log.json")
+MAX_DATASET_SIZE = 5 * 1024 * 1024  # 5MB
 
 
 def _load_lib():
@@ -80,6 +88,78 @@ def tokenize_file(path: str):
 def train(dataset_path: str) -> None:
     """Placeholder training routine."""
     logger.info('Training on %s (stub implementation)', dataset_path)
+
+
+def compute_sha256(path: str) -> str:
+    """Return SHA-256 hash of file at ``path``."""
+    digest = hashlib.sha256()
+    with open(path, 'rb') as f:
+        for chunk in iter(lambda: f.read(8192), b''):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _load_train_log(log_path: str = LOG_FILE) -> list:
+    if not os.path.exists(log_path):
+        return []
+    try:
+        with open(log_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        if isinstance(data, list):
+            return data
+    except Exception:  # pylint: disable=broad-except
+        logger.warning('Failed to read %s', log_path)
+    return []
+
+
+def _write_train_log(entries: list, log_path: str = LOG_FILE) -> None:
+    os.makedirs(os.path.dirname(log_path), exist_ok=True)
+    with open(log_path, 'w', encoding='utf-8') as f:
+        json.dump(entries, f, indent=2)
+
+
+def _needs_training(entries: list, filename: str, sha256: str) -> bool:
+    for e in entries:
+        if e.get('filename') == filename and e.get('sha256') == sha256:
+            return False
+    return True
+
+
+def check_dataset_updates(dataset_dir: str = DATASET_DIR,
+                          log_path: str = LOG_FILE):
+    """Return list of dataset paths needing training and existing log entries."""
+    entries = _load_train_log(log_path)
+    datasets = []
+    for item in os.scandir(dataset_dir):
+        if not item.is_file() or not item.name.lower().endswith('.bin'):
+            continue
+        if os.path.getsize(item.path) > MAX_DATASET_SIZE:
+            logger.warning('%s exceeds size limit and will be ignored', item.name)
+            continue
+        sha256 = compute_sha256(item.path)
+        if _needs_training(entries, item.name, sha256):
+            datasets.append((item.path, item.name, sha256))
+    return datasets, entries
+
+
+def auto_train(dataset_dir: str = DATASET_DIR, log_path: str = LOG_FILE) -> None:
+    """Automatically tokenize and train on new datasets."""
+    datasets, entries = check_dataset_updates(dataset_dir, log_path)
+    for path, name, sha256 in datasets:
+        tokenize_file(path)
+        train(path)
+        entries.append({
+            'filename': name,
+            'sha256': sha256,
+            'trained_at': datetime.datetime.utcnow().isoformat()
+        })
+    if datasets:
+        _write_train_log(entries, log_path)
+
+
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
+    auto_train()
 
 
 
