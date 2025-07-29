@@ -31,12 +31,7 @@ jobs:
       - name: Build
         id: make_build
         run: |
-          make
-
-      - name: Build runfast
-        id: make_build_runfast
-        run: |
-          make runfast
+          make lib
 
   macOS-latest-make:
     runs-on: macos-latest
@@ -55,17 +50,7 @@ jobs:
       - name: Build
         id: make_build
         run: |
-          make
-
-      - name: Build runfast
-        id: make_build_runfast
-        run: |
-          make runfast
-
-      - name: Build clang
-        id: make_build_clang
-        run: |
-          make run CC=clang
+          make lib
 
   windows-latest-make:
     runs-on: windows-latest
@@ -121,4 +106,4 @@ jobs:
       - name: Build ${{ matrix.sys }} ${{ matrix.env }}
         id: build_mingw
         run: |
-          make win64
+          make lib

@@ -1,11 +1,8 @@
 /*
-Inference for Llama-2 Transformer model in pure C.
+Inference for the L2C Transformer model in pure C.
 
-Example compile: (see README for more details)
-$ gcc -O3 -o run run.c -lm
-
-Then run with:
-$ ./run
+Example compile:
+$ gcc -Ofast -fPIC -shared -o libl2c.so l2c.c -lm
 */
 
 #include <stdio.h>
@@ -199,7 +196,7 @@ void softmax(float* x, int size) {
     }
 }
 
-#ifdef LLAMAC_AVX2
+#ifdef L2C_AVX2
 #include <immintrin.h>
 
 // AVX2 intrinsics for matmul
@@ -612,7 +609,7 @@ char* l2c_generate(const char* checkpoint, const char* prompt, int steps,
     // start the main loop
     long start = 0;  // used to time our code, only initialized after first iteration
     int next;        // will store the next token in the sequence
-    int token = 1;   // init with token 1 (=BOS), as done in Llama-2 sentencepiece tokenizer
+    int token = 1;   // init with token 1 (=BOS)
     int pos = 0;     // position in the sequence
     while (pos < steps) {
 

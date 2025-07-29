@@ -1,16 +1,15 @@
-# Taken from llama code and lightly modified
+# Adapted for the L2C project
 # Copyright (c) Meta Platforms, Inc. and affiliates.
-# This software may be used and distributed according to the terms of the Llama 2 Community License Agreement.
+# This software may be used and distributed according to the terms of the original license.
 
 import os
 import struct
-from logging import getLogger
 from typing import List
 
 from sentencepiece import SentencePieceProcessor
 
-TOKENIZER_MODEL = "tokenizer.model" # the llama sentencepiece tokenizer model
-TOKENIZER_BIN = "tokenizer.bin" # binary version of the tokenizer for inference in C
+TOKENIZER_MODEL = "tokenizer.model"  # the l2c sentencepiece tokenizer model
+TOKENIZER_BIN = "tokenizer.bin"  # binary version of the tokenizer for inference in C
 
 class Tokenizer:
     def __init__(self):

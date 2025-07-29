@@ -1,4 +1,3 @@
-import os
 import l2c
 
 
