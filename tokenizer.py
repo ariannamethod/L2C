@@ -70,6 +70,4 @@ class Tokenizer:
                 f.write(struct.pack("fI", score, len(bytes)))
                 f.write(bytes)
 
-if __name__ == "__main__":
-    t = Tokenizer()
-    t.export()
+

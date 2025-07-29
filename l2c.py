@@ -43,20 +43,43 @@ def generate(prompt: str, checkpoint: str = 'weights/7B/model.bin', steps: int =
             lib.l2c_free(result_ptr)
 
 
-if __name__ == '__main__':
-    logging.basicConfig(level=logging.INFO)
-    import argparse
-    parser = argparse.ArgumentParser(description='Generate text with L2C')
-    parser.add_argument('prompt', nargs='?', default='')
-    parser.add_argument('--checkpoint', default='weights/7B/model.bin')
-    parser.add_argument('--steps', type=int, default=256)
-    parser.add_argument('--temperature', type=float, default=1.0)
-    parser.add_argument('--topp', type=float, default=0.9)
-    args = parser.parse_args()
-    try:
-        text = generate(args.prompt, args.checkpoint, args.steps,
-                        args.temperature, args.topp)
-        print(text)
-    except Exception as e:
-        logger.error('Generation failed: %s', e)
+def dream_once() -> str:
+    """Generate a single dream and return the path to the saved file."""
+    from dream import dream
+
+    return dream()
+
+
+def dream_loop(delay: int = 5) -> None:
+    """Continuously generate dreams every ``delay`` seconds."""
+    import time
+
+    while True:
+        path = dream_once()
+        print('dream saved to', path)
+        time.sleep(delay)
+
+
+def health() -> dict:
+    """Return health metrics from :mod:`health_check`."""
+    from health_check import check
+
+    return check()
+
+
+def tokenize_file(path: str):
+    """Tokenize contents of ``path`` using :mod:`tokenizer`."""
+    from tokenizer import Tokenizer
+
+    tok = Tokenizer()
+    with open(path, 'r', encoding='utf-8') as f:
+        text = f.read()
+    return tok.encode(text, bos=True, eos=False)
+
+
+def train(dataset_path: str) -> None:
+    """Placeholder training routine."""
+    logger.info('Training on %s (stub implementation)', dataset_path)
+
+
 
