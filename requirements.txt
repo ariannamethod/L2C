@@ -9,3 +9,4 @@ wandb==0.15.5
 fastapi==0.110.0
 uvicorn==0.29.0
 orjson==3.10.1
+setuptools
