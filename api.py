@@ -1,15 +1,24 @@
 import logging
+import os
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import ORJSONResponse
 import uvicorn
 import l2c
-import os
 
 app = FastAPI()
-
 logger = logging.getLogger(__name__)
+
+
+@app.get("/", response_class=ORJSONResponse)
+async def root():
+    return {
+        "message": "Hello from FastAPI on Railway!",
+        "docs": "/docs",
+        "health": "/health",
+        "chat": "/chat"
+    }
 
 
 @app.post("/chat", response_class=ORJSONResponse)
@@ -26,12 +35,20 @@ async def chat(data: dict):
 
 @app.get("/health", response_class=ORJSONResponse)
 async def health():
-    metrics = l2c.health()
-    entries = l2c._load_train_log()  # type: ignore[attr-defined]
+    try:
+        metrics = l2c.health()
+    except Exception as exc:
+        logger.exception("l2c.health() failed")
+        metrics = {}
+    try:
+        entries = l2c._load_train_log()  # type: ignore[attr-defined]
+    except Exception as exc:
+        logger.exception("l2c._load_train_log() failed")
+        entries = []
     return {
         "online": metrics.get("available", False),
         "logs_read": bool(entries),
-        "unique_datapoints": len(entries),
+        "unique_datapoints": len(entries) if entries else 0,
     }
 
 
